@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # vue-inventario
 
 ## Project setup
