@@ -19,6 +19,9 @@ npm run build
 ```
 npm run lint
 ```
+# Resultados
+![image](https://github.com/user-attachments/assets/1d6c4b44-52f3-4206-8c27-fe6fda0b0737)
+![image](https://github.com/user-attachments/assets/c973330f-97da-4109-aa4d-dc06d8215b69)
 
 # Respuestas a las Preguntas
 ### *1. Vue no detecta cambios dentro de objetos reactivos de la forma que esperarías. ¿Cómo podrías observar un cambio en una propiedad anidada?*
