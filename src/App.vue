@@ -24,16 +24,20 @@
         <div class="title-line"></div>
       </div>
 
-      <div class="product-grid">
+      <div v-if="cargando" class="loading-indicator">
+        <p>Cargando productos...</p>
+      </div>
+
+      <div v-else class="product-grid">
         <div
-          v-for="(producto, index) in productos"
-          :key="producto.nombre"
+          v-for="producto in productos"
+          :key="producto.id"
           class="product-card"
           :class="{ 'product-unavailable': !producto.disponible }"
         >
           <div class="product-image-container">
             <img
-              :src="producto.imagen"
+              :src="getImagenProducto(producto.nombre)"
               :alt="producto.nombre"
               class="product-image"
             />
@@ -62,13 +66,16 @@
 
             <div class="product-controls">
               <button
-                @click="reducirStock(index)"
+                @click="reducirStock(producto.id)"
                 :disabled="producto.stock === 0"
                 class="btn btn-decrease"
               >
                 -
               </button>
-              <button @click="aumentarStock(index)" class="btn btn-increase">
+              <button
+                @click="aumentarStock(producto.id)"
+                class="btn btn-increase"
+              >
                 +
               </button>
             </div>
@@ -97,9 +104,12 @@
 </template>
 
 <script>
-import { reactive, watch } from "vue";
+/* eslint-disable */
+import { ref, onMounted } from "vue";
+import { gql } from "@apollo/client/core";
+import client from "@/apollo-client";
 
-// Importación de imágenes
+// Importación de imágenes para la asignación dinámica
 import camisaBlanca from "@/assets/camisa-blanca.png";
 import jeansAzul from "@/assets/jeans-azul.png";
 import chaquetaNegra from "@/assets/chaqueta-negra.png";
@@ -108,69 +118,150 @@ import zapatillasNegras from "@/assets/zapatillas-negras.png";
 
 export default {
   setup() {
-    const productos = reactive([
-      {
-        nombre: "Camiseta Blanca Esencial",
-        precio: 29.99,
-        stock: 10,
-        disponible: true,
-        imagen: camisaBlanca,
-      },
-      {
-        nombre: "Jeans Corte Clásico",
-        precio: 89.99,
-        stock: 5,
-        disponible: true,
-        imagen: jeansAzul,
-      },
-      {
-        nombre: "Vestido Minimalista",
-        precio: 59.99,
-        stock: 0,
-        disponible: false,
-        imagen: vestidoFloral,
-      },
-      {
-        nombre: "Chaqueta Urbana",
-        precio: 129.99,
-        stock: 2,
-        disponible: true,
-        imagen: chaquetaNegra,
-      },
-      {
-        nombre: "Zapatillas Urbanas",
-        precio: 79.99,
-        stock: 8,
-        disponible: true,
-        imagen: zapatillasNegras,
-      },
-    ]);
+    const productos = ref([]);
+    const cargando = ref(true);
 
-    const reducirStock = (index) => {
-      if (productos[index].stock > 0) {
-        productos[index].stock--;
+    // Mapeo de nombres de productos a imágenes
+    const imagenesProductos = {
+      "Camiseta Blanca Esencial": camisaBlanca,
+      "Jeans Corte Clásico": jeansAzul,
+      "Vestido Minimalista": vestidoFloral,
+      "Chaqueta Urbana": chaquetaNegra,
+      "Zapatillas Urbanas": zapatillasNegras,
+    };
+
+    // Retorna la imagen correspondiente al nombre del producto
+    const getImagenProducto = (nombre) => {
+      return imagenesProductos[nombre] || camisaBlanca; // Imagen por defecto
+    };
+
+    // Consulta GraphQL para obtener todos los productos usando Apollo Client
+    const fetchProductos = async () => {
+      try {
+        const OBTENER_PRODUCTOS = gql`
+          query {
+            productos {
+              id
+              nombre
+              precio
+              stock
+              disponible
+            }
+          }
+        `;
+
+        const { data } = await client.query({
+          query: OBTENER_PRODUCTOS,
+        });
+
+        if (data && data.productos) {
+          productos.value = data.productos;
+        }
+
+        cargando.value = false;
+      } catch (error) {
+        console.error("Error al obtener productos:", error);
+        cargando.value = false;
       }
     };
 
-    const aumentarStock = (index) => {
-      productos[index].stock++;
+    // Mutación GraphQL para aumentar el stock de un producto usando Apollo Client
+    const aumentarStock = async (id) => {
+      try {
+        const AUMENTAR_STOCK = gql`
+          mutation ModificarStock($id: ID!, $cantidad: Int!) {
+            modificarStock(id: $id, cantidad: $cantidad) {
+              id
+              nombre
+              stock
+              disponible
+            }
+          }
+        `;
+
+        const { data } = await client.mutate({
+          mutation: AUMENTAR_STOCK,
+          variables: {
+            id: id.toString(),
+            cantidad: 1,
+          },
+        });
+
+        if (data && data.modificarStock) {
+          // Actualizar el producto en la lista
+          const productoActualizado = data.modificarStock;
+          const index = productos.value.findIndex(
+            (p) => p.id === productoActualizado.id
+          );
+
+          if (index !== -1) {
+            // Actualizar solo las propiedades modificadas manteniendo el resto
+            productos.value[index] = {
+              ...productos.value[index],
+              stock: productoActualizado.stock,
+              disponible: productoActualizado.disponible,
+            };
+          }
+        }
+      } catch (error) {
+        console.error("Error al aumentar stock:", error);
+      }
     };
 
-    // Watcher para actualizar disponibilidad
-    watch(
-      () => productos.map((p) => p.stock),
-      (newStocks) => {
-        newStocks.forEach((stock, index) => {
-          productos[index].disponible = stock > 0;
+    // Mutación GraphQL para reducir el stock de un producto usando Apollo Client
+    const reducirStock = async (id) => {
+      try {
+        const REDUCIR_STOCK = gql`
+          mutation ModificarStock($id: ID!, $cantidad: Int!) {
+            modificarStock(id: $id, cantidad: $cantidad) {
+              id
+              nombre
+              stock
+              disponible
+            }
+          }
+        `;
+
+        const { data } = await client.mutate({
+          mutation: REDUCIR_STOCK,
+          variables: {
+            id: id.toString(),
+            cantidad: -1,
+          },
         });
-      },
-      { deep: true }
-    );
+
+        if (data && data.modificarStock) {
+          // Actualizar el producto en la lista
+          const productoActualizado = data.modificarStock;
+          const index = productos.value.findIndex(
+            (p) => p.id === productoActualizado.id
+          );
+
+          if (index !== -1) {
+            // Actualizar solo las propiedades modificadas manteniendo el resto
+            productos.value[index] = {
+              ...productos.value[index],
+              stock: productoActualizado.stock,
+              disponible: productoActualizado.disponible,
+            };
+          }
+        }
+      } catch (error) {
+        console.error("Error al reducir stock:", error);
+      }
+    };
+
+    // Cargar los productos cuando el componente se monte
+    onMounted(() => {
+      fetchProductos();
+    });
 
     return {
       productos,
-      reducirStock,
+      cargando,
+      getImagenProducto,
       aumentarStock,
+      reducirStock,
     };
   },
 };
@@ -310,6 +401,13 @@ body {
 .product-showcase {
   flex: 1;
   padding: 0 2rem 4rem;
+}
+
+.loading-indicator {
+  text-align: center;
+  padding: 2rem;
+  font-size: 1.1rem;
+  color: var(--color-secondary);
 }
 
 .product-grid {
